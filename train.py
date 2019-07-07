@@ -9,7 +9,7 @@ from networks import StyleContentModel, TransformerNet
 logging.basicConfig(level=logging.INFO)
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
-total_variation_weight = 1e8
+total_variation_weight = 1
 style_weight = 1e-2
 content_weight = 1e4
 
@@ -24,14 +24,14 @@ def load_img(path_to_img):
 
 
 def style_content_loss(outputs, transformed_outputs):
-    style_outputs = outputs["style"]
+    transformed_style_outputs = transformed_outputs["style"]
     content_outputs = outputs["content"]
     transformed_content_outputs = transformed_outputs["content"]
 
     style_loss = tf.add_n(
         [
-            tf.reduce_mean((style_outputs[name] - style_targets[name]) ** 2)
-            for name in style_outputs.keys()
+            tf.reduce_mean((transformed_style_outputs[name] - style_targets[name]) ** 2)
+            for name in transformed_style_outputs.keys()
         ]
     )
     style_loss *= style_weight / num_style_layers
@@ -63,8 +63,8 @@ def total_variation_loss(image):
 
 if __name__ == "__main__":
     IMAGE_SIZE = 256
-    log_dir = "logs"
-    learning_rate = 0.02
+    log_dir = "logs/9"
+    learning_rate = 1e-3
 
     style_path = tf.keras.utils.get_file(
         "kandinsky.jpg",
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     )
 
     ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=optimizer, transformer=transformer)
-    manager = tf.train.CheckpointManager(ckpt, './tf_ckpts', max_to_keep=3)
+    manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=3)
     ckpt.restore(manager.latest_checkpoint)
     if manager.latest_checkpoint:
         print("Restored from {}".format(manager.latest_checkpoint))
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         image = tf.cast(image, tf.float32)
         return image
 
-    ds = tfds.load("coco2014", split=tfds.Split.TRAIN)
+    ds = tfds.load("coco2014", split=tfds.Split.TRAIN, data_dir='~/tensorflow_datasets')
     ds = ds.map(_crop).shuffle(1000).batch(4).prefetch(AUTOTUNE)
 
     epochs = 2
