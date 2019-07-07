@@ -102,6 +102,14 @@ if __name__ == "__main__":
         learning_rate=learning_rate, beta_1=0.99, epsilon=1e-1
     )
 
+    ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=optimizer, transformer=transformer)
+    manager = tf.train.CheckpointManager(ckpt, './tf_ckpts', max_to_keep=3)
+    ckpt.restore(manager.latest_checkpoint)
+    if manager.latest_checkpoint:
+        print("Restored from {}".format(manager.latest_checkpoint))
+    else:
+        print("Initializing from scratch.")
+
     train_loss = tf.keras.metrics.Mean(name="train_loss")
     train_style_loss = tf.keras.metrics.Mean(name="train_style_loss")
     train_content_loss = tf.keras.metrics.Mean(name="train_content_loss")
@@ -146,15 +154,15 @@ if __name__ == "__main__":
     ds = ds.map(_crop).shuffle(1000).batch(4).prefetch(AUTOTUNE)
 
     epochs = 2
-    step = 0
 
-    for epoch in range(epochs):
-        for batch, image in enumerate(ds):
+    for _ in range(epochs):
+        for image in ds:
             train_step(image)
 
-            step += 1
+            ckpt.step.assign_add(1)
+            step = int(ckpt.step)
 
-            if (step + 2) % 500 == 0:
+            if step % 500 == 0:
                 with train_summary_writer.as_default():
                     tf.summary.scalar("loss", train_loss.result(), step=step)
                     tf.summary.scalar(
@@ -177,17 +185,18 @@ if __name__ == "__main__":
                         "Styled Image", test_styled_image / 255.0, step=step
                     )
 
-                template = "Epoch {}, Batch {}, Loss: {}, Style Loss: {}, Content Loss: {}, VA Loss: {}"
+                template = "Step {}, Loss: {}, Style Loss: {}, Content Loss: {}, VA Loss: {}"
                 print(
                     template.format(
-                        epoch + 1,
-                        batch + 1,
+                        step,
                         train_loss.result(),
                         train_style_loss.result(),
                         train_content_loss.result(),
                         train_va_loss.result(),
                     )
                 )
+                save_path = manager.save()
+                print("Saved checkpoint for step {}: {}".format(int(ckpt.step), save_path))
 
             train_loss.reset_states()
             train_style_loss.reset_states()
