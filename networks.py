@@ -11,39 +11,26 @@ class ResidualBlock(keras.Model):
         self.channels = channels
         self.strides = strides
 
-        self.conv1 = ConvLayer(channels, kernel=(3, 3), stride=strides)
+        self.conv1 = layers.Conv2D(
+            channels, (3, 3), strides=strides, padding="same"
+        )
         self.bn1 = layers.BatchNormalization()
-        self.conv2 = ConvLayer(channels, kernel=(3, 3), stride=strides)
+        self.conv2 = layers.Conv2D(
+            channels, (3, 3), strides=strides, padding="same"
+        )
         self.bn2 = layers.BatchNormalization()
 
     def call(self, inputs, training=None, **kwargs):
         residual = inputs
 
-        x = self.bn1(inputs, training=training)
+        x = self.conv1(inputs)
+        x = self.bn1(x, training=training)
         x = tf.nn.relu(x)
-        x = self.conv1(x)
-        x = self.bn2(x, training=training)
-        x = tf.nn.relu(x)
+
         x = self.conv2(x)
+        x = self.bn2(x, training=training)
 
         x = x + residual
-        return x
-
-
-class ConvLayer(layers.Layer):
-    def __init__(self, channels, kernel, stride):
-        super(ConvLayer, self).__init__()
-        kernel_size = kernel[0]
-
-        reflection_padding = kernel_size // 2
-        self.reflection_pad = layers.ZeroPadding2D(
-            reflection_padding
-        )  # Should be reflection padding
-        self.conv2d = layers.Conv2D(channels, kernel, strides=stride)
-
-    def call(self, inputs):
-        x = self.reflection_pad(inputs)
-        x = self.conv2d(x)
         return x
 
 
@@ -51,11 +38,17 @@ class TransformerNet(keras.Model):
     def __init__(self):
         super(TransformerNet, self).__init__()
         # Initial convolution layers
-        self.conv1 = ConvLayer(32, kernel=(9, 9), stride=1)
+        self.conv1 = layers.Conv2D(
+            32, kernel=(9, 9), strides=1, padding="same"
+        )
         self.in1 = layers.BatchNormalization()
-        self.conv2 = ConvLayer(64, kernel=(3, 3), stride=2)
+        self.conv2 = layers.Conv2D(
+            64, kernel=(3, 3), strides=2, padding="same"
+        )
         self.in2 = layers.BatchNormalization()
-        self.conv3 = ConvLayer(128, kernel=(3, 3), stride=2)
+        self.conv3 = layers.Conv2D(
+            128, kernel=(3, 3), strides=2, padding="same"
+        )
         self.in3 = layers.BatchNormalization()
         # Residual layers
         self.res1 = ResidualBlock(128)
@@ -65,14 +58,16 @@ class TransformerNet(keras.Model):
         self.res5 = ResidualBlock(128)
         # Upsampling Layers
         self.deconv1 = layers.Conv2DTranspose(
-            64, kernel_size=(3, 3), strides=2, padding="same", use_bias=False
+            64, kernel_size=(3, 3), strides=2, padding="same"
         )
         self.in4 = layers.BatchNormalization()
         self.deconv2 = layers.Conv2DTranspose(
-            32, kernel_size=(3, 3), strides=2, padding="same", use_bias=False
+            32, kernel_size=(3, 3), strides=2, padding="same"
         )
         self.in5 = layers.BatchNormalization()
-        self.deconv3 = ConvLayer(3, kernel=(9, 9), stride=1)
+        self.deconv3 = layers.Conv2D(
+            3, kernel=(9, 9), strides=1, padding="same", activation="tanh"
+        )
         # Non-linearities
         self.relu = layers.ReLU()
 
@@ -89,8 +84,7 @@ class TransformerNet(keras.Model):
         x = self.relu(self.in4(self.deconv1(x), training=training))
         x = self.relu(self.in5(self.deconv2(x), training=training))
         x = self.deconv3(x)
-        x = keras.activations.tanh(x) * 127.5 + 127.5
-        return x
+        return x * 127.5 + 127.5
 
 
 def vgg_layers(layer_names):
