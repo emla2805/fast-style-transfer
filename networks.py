@@ -122,8 +122,7 @@ class StyleContentModel(tf.keras.models.Model):
         self.vgg.trainable = False
 
     def call(self, inputs, **kwargs):
-        """Expects float input in [0,1]"""
-        inputs = inputs * 255.0
+        inputs = inputs
         preprocessed_input = tf.keras.applications.vgg19.preprocess_input(
             inputs
         )

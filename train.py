@@ -9,10 +9,7 @@ from networks import StyleContentModel, TransformerNet
 logging.basicConfig(level=logging.INFO)
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
-# total_variation_weight = 1e8
-# style_weight = 1e10
-# content_weight = 1e5
-
+total_variation_weight = 1e8
 style_weight = 1e-2
 content_weight = 1e4
 
@@ -22,7 +19,6 @@ def load_img(path_to_img):
     img = tf.image.decode_image(img, channels=3)
     img = tf.image.resize_with_crop_or_pad(img, 256, 256)
     img = tf.cast(img, tf.float32)
-    # img /= 255.0
     img = img[tf.newaxis, :]
     return img
 
@@ -53,16 +49,16 @@ def style_content_loss(outputs, transformed_outputs):
     return style_loss, content_loss
 
 
-# def high_pass_x_y(image):
-#     x_var = image[:, :, 1:, :] - image[:, :, :-1, :]
-#     y_var = image[:, 1:, :, :] - image[:, :-1, :, :]
-#
-#     return x_var, y_var
-#
-#
-# def total_variation_loss(image):
-#     x_deltas, y_deltas = high_pass_x_y(image)
-#     return tf.reduce_mean(x_deltas ** 2) + tf.reduce_mean(y_deltas ** 2)
+def high_pass_x_y(image):
+    x_var = image[:, :, 1:, :] - image[:, :, :-1, :]
+    y_var = image[:, 1:, :, :] - image[:, :-1, :, :]
+
+    return x_var, y_var
+
+
+def total_variation_loss(image):
+    x_deltas, y_deltas = high_pass_x_y(image)
+    return tf.reduce_mean(x_deltas ** 2) + tf.reduce_mean(y_deltas ** 2)
 
 
 if __name__ == "__main__":
@@ -99,8 +95,8 @@ if __name__ == "__main__":
     extractor = StyleContentModel(style_layers, content_layers)
     transformer = TransformerNet()
 
-    # Precompute style_image
-    style_image = style_image / 255.0
+    # Precompute style_targets
+    style_image = style_image
     style_targets = extractor(style_image)["style"]
 
     optimizer = tf.optimizers.Adam(
@@ -110,20 +106,17 @@ if __name__ == "__main__":
     train_loss = tf.keras.metrics.Mean(name="train_loss")
     train_style_loss = tf.keras.metrics.Mean(name="train_style_loss")
     train_content_loss = tf.keras.metrics.Mean(name="train_content_loss")
+    train_va_loss = tf.keras.metrics.Mean(name="train_va_loss")
 
     train_summary_writer = tf.summary.create_file_writer(
         os.path.join(log_dir, "train")
     )
 
-    # @tf.function()
+    @tf.function()
     def train_step(image):
         with tf.GradientTape() as tape:
 
-            # image float [0, 255] shape (4, 3, 256, 256)
             transformed_image = transformer(image)
-
-            image = image / 255.0
-            transformed_image = transformed_image / 255.0
 
             outputs = extractor(image)
             transformed_outputs = extractor(transformed_image)
@@ -131,11 +124,8 @@ if __name__ == "__main__":
             style_loss, content_loss = style_content_loss(
                 outputs, transformed_outputs
             )
-            loss = (
-                style_loss
-                + content_loss
-                # + total_variation_weight * total_variation_loss(image)
-            )
+            va_loss = total_variation_weight * total_variation_loss(image)
+            loss = style_loss + content_loss + va_loss
 
         gradients = tape.gradient(loss, transformer.trainable_variables)
         optimizer.apply_gradients(
@@ -146,44 +136,60 @@ if __name__ == "__main__":
         train_loss(loss)
         train_style_loss(style_loss)
         train_content_loss(content_loss)
+        train_va_loss(va_loss)
 
     def _crop(features):
         image = tf.image.resize_with_crop_or_pad(features["image"], 256, 256)
         image = tf.cast(image, tf.float32)
-        # image /= 255.0
         return image
 
     ds = tfds.load("coco2014", split=tfds.Split.TRAIN)
     ds = ds.map(_crop).shuffle(1000).batch(4).prefetch(AUTOTUNE)
 
-    epochs = 10
+    epochs = 2
+    step = 0
 
     for epoch in range(epochs):
-        for image in ds.take(10):
+        for batch, image in enumerate(ds):
             train_step(image)
-        with train_summary_writer.as_default():
-            tf.summary.scalar("loss", train_loss.result(), step=epoch)
-            tf.summary.scalar(
-                "style_loss", train_style_loss.result(), step=epoch
-            )
-            tf.summary.scalar(
-                "content_loss", train_content_loss.result(), step=epoch
-            )
-            tf.summary.image("Reference Image", test_content_image / 255.0, step=epoch)
-            test_styled_image = transformer(test_content_image)
-            tf.summary.image("Styled Image", test_styled_image / 255.0, step=epoch)
 
-        template = "Epoch {}, Loss: {}, Style Loss: {}, Content Loss: {}"
-        print(
-            template.format(
-                epoch + 1,
-                train_loss.result(),
-                train_style_loss.result(),
-                train_content_loss.result(),
-            )
-        )
+            step += 1
 
-        # Reset metrics every epoch
-        train_loss.reset_states()
-        train_style_loss.reset_states()
-        train_content_loss.reset_states()
+            if (step + 1) % 500 == 0:
+                with train_summary_writer.as_default():
+                    tf.summary.scalar("loss", train_loss.result(), step=step)
+                    tf.summary.scalar(
+                        "style_loss", train_style_loss.result(), step=step
+                    )
+                    tf.summary.scalar(
+                        "content_loss", train_content_loss.result(), step=step
+                    )
+                    tf.summary.scalar(
+                        "va_loss", train_va_loss.result(), step=step
+                    )
+                    tf.summary.image(
+                        "Reference Image",
+                        test_content_image / 255.0,
+                        step=step,
+                    )
+                    test_styled_image = transformer(test_content_image)
+                    tf.summary.image(
+                        "Styled Image", test_styled_image / 255.0, step=step
+                    )
+
+                template = "Epoch {}, Batch {}, Loss: {}, Style Loss: {}, Content Loss: {}, VA Loss: {}"
+                print(
+                    template.format(
+                        epoch + 1,
+                        batch + 1,
+                        train_loss.result(),
+                        train_style_loss.result(),
+                        train_content_loss.result(),
+                        train_va_loss.result(),
+                    )
+                )
+
+            train_loss.reset_states()
+            train_style_loss.reset_states()
+            train_content_loss.reset_states()
+            train_va_loss.reset_states()
