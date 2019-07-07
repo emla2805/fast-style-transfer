@@ -38,17 +38,11 @@ class TransformerNet(keras.Model):
     def __init__(self):
         super(TransformerNet, self).__init__()
         # Initial convolution layers
-        self.conv1 = layers.Conv2D(
-            32, kernel=(9, 9), strides=1, padding="same"
-        )
+        self.conv1 = layers.Conv2D(32, (9, 9), strides=1, padding="same")
         self.in1 = layers.BatchNormalization()
-        self.conv2 = layers.Conv2D(
-            64, kernel=(3, 3), strides=2, padding="same"
-        )
+        self.conv2 = layers.Conv2D(64, (3, 3), strides=2, padding="same")
         self.in2 = layers.BatchNormalization()
-        self.conv3 = layers.Conv2D(
-            128, kernel=(3, 3), strides=2, padding="same"
-        )
+        self.conv3 = layers.Conv2D(128, (3, 3), strides=2, padding="same")
         self.in3 = layers.BatchNormalization()
         # Residual layers
         self.res1 = ResidualBlock(128)
@@ -58,15 +52,15 @@ class TransformerNet(keras.Model):
         self.res5 = ResidualBlock(128)
         # Upsampling Layers
         self.deconv1 = layers.Conv2DTranspose(
-            64, kernel_size=(3, 3), strides=2, padding="same"
+            64, (3, 3), strides=2, padding="same"
         )
         self.in4 = layers.BatchNormalization()
         self.deconv2 = layers.Conv2DTranspose(
-            32, kernel_size=(3, 3), strides=2, padding="same"
+            32, (3, 3), strides=2, padding="same"
         )
         self.in5 = layers.BatchNormalization()
         self.deconv3 = layers.Conv2D(
-            3, kernel=(9, 9), strides=1, padding="same", activation="tanh"
+            3, (9, 9), strides=1, padding="same", activation="tanh"
         )
         # Non-linearities
         self.relu = layers.ReLU()
