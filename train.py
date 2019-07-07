@@ -17,7 +17,7 @@ content_weight = 1e4
 def load_img(path_to_img):
     img = tf.io.read_file(path_to_img)
     img = tf.image.decode_image(img, channels=3)
-    img = tf.image.resize_with_crop_or_pad(img, 256, 256)
+    # img = tf.image.resize_with_crop_or_pad(img, 256, 256)
     img = tf.cast(img, tf.float32)
     img = img[tf.newaxis, :]
     return img
@@ -96,7 +96,6 @@ if __name__ == "__main__":
     transformer = TransformerNet()
 
     # Precompute style_targets
-    style_image = style_image
     style_targets = extractor(style_image)["style"]
 
     optimizer = tf.optimizers.Adam(
@@ -155,7 +154,7 @@ if __name__ == "__main__":
 
             step += 1
 
-            if (step + 1) % 500 == 0:
+            if (step + 2) % 500 == 0:
                 with train_summary_writer.as_default():
                     tf.summary.scalar("loss", train_loss.result(), step=step)
                     tf.summary.scalar(
@@ -168,9 +167,10 @@ if __name__ == "__main__":
                         "va_loss", train_va_loss.result(), step=step
                     )
                     tf.summary.image(
-                        "Reference Image",
-                        test_content_image / 255.0,
-                        step=step,
+                        "Content Image", test_content_image / 255.0, step=step
+                    )
+                    tf.summary.image(
+                        "Style Image", style_image / 255.0, step=step
                     )
                     test_styled_image = transformer(test_content_image)
                     tf.summary.image(
