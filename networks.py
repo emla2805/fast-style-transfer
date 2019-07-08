@@ -141,7 +141,7 @@ class TransformerNet(keras.Model):
         x = self.relu(self.in4(self.deconv1(x)))
         x = self.relu(self.in5(self.deconv2(x)))
         x = self.deconv3(x)
-        x = self.relu(x) * 127.5 + 127.5
+        x = keras.activations.tanh(x) * 127.5 + 127.5
         return x
 
 
