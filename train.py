@@ -170,7 +170,7 @@ if __name__ == "__main__":
             ckpt.step.assign_add(1)
             step = int(ckpt.step)
 
-            if step % 5 == 0:
+            if step % 500 == 0:
                 with train_summary_writer.as_default():
                     tf.summary.scalar("loss", train_loss.result(), step=step)
                     tf.summary.scalar(
