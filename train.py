@@ -133,7 +133,7 @@ if __name__ == "__main__":
             style_loss, content_loss = style_content_loss(
                 outputs, transformed_outputs
             )
-            va_loss = args.tv_weight * total_variation_loss(image)
+            va_loss = args.tv_weight * total_variation_loss(transformed_image)
             style_loss *= args.style_weight / num_style_layers
             content_loss *= args.content_weight / num_content_layers
 
