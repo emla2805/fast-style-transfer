@@ -1,5 +1,6 @@
 import os
 import logging
+from argparse import ArgumentParser
 
 import tensorflow as tf
 import tensorflow_datasets as tfds
@@ -9,15 +10,10 @@ from networks import StyleContentModel, TransformerNet
 logging.basicConfig(level=logging.INFO)
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
-total_variation_weight = 1
-style_weight = 1e-2
-content_weight = 1e4
-
 
 def load_img(path_to_img):
     img = tf.io.read_file(path_to_img)
     img = tf.image.decode_image(img, channels=3)
-    # img = tf.image.resize_with_crop_or_pad(img, 256, 256)
     img = tf.cast(img, tf.float32)
     img = img[tf.newaxis, :]
     return img
@@ -30,11 +26,12 @@ def style_content_loss(outputs, transformed_outputs):
 
     style_loss = tf.add_n(
         [
-            tf.reduce_mean((transformed_style_outputs[name] - style_targets[name]) ** 2)
+            tf.reduce_mean(
+                (transformed_style_outputs[name] - style_targets[name]) ** 2
+            )
             for name in transformed_style_outputs.keys()
         ]
     )
-    style_loss *= style_weight / num_style_layers
 
     content_loss = tf.add_n(
         [
@@ -45,7 +42,6 @@ def style_content_loss(outputs, transformed_outputs):
             for name in content_outputs.keys()
         ]
     )
-    content_loss *= content_weight / num_content_layers
     return style_loss, content_loss
 
 
@@ -62,9 +58,16 @@ def total_variation_loss(image):
 
 
 if __name__ == "__main__":
-    IMAGE_SIZE = 256
-    log_dir = "logs/9"
-    learning_rate = 1e-3
+    parser = ArgumentParser()
+    parser.add_argument("--log-dir", default="logs/style")
+    parser.add_argument("--learning-rate", default=1e-3, type=float)
+    parser.add_argument("--image-size", default=256, type=int)
+    parser.add_argument("--batch-size", default=4, type=int)
+    parser.add_argument("--epochs", default=2, type=int)
+    parser.add_argument("--content-weight", default=1e4, type=float)
+    parser.add_argument("--style-weight", default=1e-2, type=float)
+    parser.add_argument("--tv-weight", default=1, type=float)
+    args = parser.parse_args()
 
     style_path = tf.keras.utils.get_file(
         "kandinsky.jpg",
@@ -77,10 +80,7 @@ if __name__ == "__main__":
     )
     test_content_image = load_img(test_content_path)
 
-    # Content layer where will pull our feature maps
     content_layers = ["block5_conv2"]
-
-    # Style layer of interest
     style_layers = [
         "block1_conv1",
         "block2_conv1",
@@ -99,11 +99,13 @@ if __name__ == "__main__":
     style_targets = extractor(style_image)["style"]
 
     optimizer = tf.optimizers.Adam(
-        learning_rate=learning_rate, beta_1=0.99, epsilon=1e-1
+        learning_rate=args.learning_rate, beta_1=0.99, epsilon=1e-1
     )
 
-    ckpt = tf.train.Checkpoint(step=tf.Variable(1), optimizer=optimizer, transformer=transformer)
-    manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=3)
+    ckpt = tf.train.Checkpoint(
+        step=tf.Variable(1), optimizer=optimizer, transformer=transformer
+    )
+    manager = tf.train.CheckpointManager(ckpt, args.log_dir, max_to_keep=3)
     ckpt.restore(manager.latest_checkpoint)
     if manager.latest_checkpoint:
         print("Restored from {}".format(manager.latest_checkpoint))
@@ -113,10 +115,10 @@ if __name__ == "__main__":
     train_loss = tf.keras.metrics.Mean(name="train_loss")
     train_style_loss = tf.keras.metrics.Mean(name="train_style_loss")
     train_content_loss = tf.keras.metrics.Mean(name="train_content_loss")
-    train_va_loss = tf.keras.metrics.Mean(name="train_va_loss")
+    train_tv_loss = tf.keras.metrics.Mean(name="train_tv_loss")
 
     train_summary_writer = tf.summary.create_file_writer(
-        os.path.join(log_dir, "train")
+        os.path.join(args.log_dir, "train")
     )
 
     @tf.function()
@@ -131,7 +133,10 @@ if __name__ == "__main__":
             style_loss, content_loss = style_content_loss(
                 outputs, transformed_outputs
             )
-            va_loss = total_variation_weight * total_variation_loss(image)
+            va_loss = args.tv_weight * total_variation_loss(image)
+            style_loss *= args.style_weight / num_style_layers
+            content_loss *= args.content_weight / num_content_layers
+
             loss = style_loss + content_loss + va_loss
 
         gradients = tape.gradient(loss, transformer.trainable_variables)
@@ -143,26 +148,29 @@ if __name__ == "__main__":
         train_loss(loss)
         train_style_loss(style_loss)
         train_content_loss(content_loss)
-        train_va_loss(va_loss)
+        train_tv_loss(va_loss)
 
     def _crop(features):
-        image = tf.image.resize_with_crop_or_pad(features["image"], 256, 256)
+        image = tf.image.resize_with_crop_or_pad(
+            features["image"], args.image_size, args.image_size
+        )
         image = tf.cast(image, tf.float32)
         return image
 
-    ds = tfds.load("coco2014", split=tfds.Split.TRAIN, data_dir='~/tensorflow_datasets')
-    ds = ds.map(_crop).shuffle(1000).batch(4).prefetch(AUTOTUNE)
+    # Warning: Downloads the full coco2014 dataset
+    ds = tfds.load(
+        "coco2014", split=tfds.Split.TRAIN, data_dir="~/tensorflow_datasets"
+    )
+    ds = ds.map(_crop).shuffle(1000).batch(args.batch_size).prefetch(AUTOTUNE)
 
-    epochs = 2
-
-    for _ in range(epochs):
+    for _ in range(args.epochs):
         for image in ds:
             train_step(image)
 
             ckpt.step.assign_add(1)
             step = int(ckpt.step)
 
-            if step % 500 == 0:
+            if step % 5 == 0:
                 with train_summary_writer.as_default():
                     tf.summary.scalar("loss", train_loss.result(), step=step)
                     tf.summary.scalar(
@@ -172,7 +180,7 @@ if __name__ == "__main__":
                         "content_loss", train_content_loss.result(), step=step
                     )
                     tf.summary.scalar(
-                        "va_loss", train_va_loss.result(), step=step
+                        "tv_loss", train_tv_loss.result(), step=step
                     )
                     tf.summary.image(
                         "Content Image", test_content_image / 255.0, step=step
@@ -185,20 +193,24 @@ if __name__ == "__main__":
                         "Styled Image", test_styled_image / 255.0, step=step
                     )
 
-                template = "Step {}, Loss: {}, Style Loss: {}, Content Loss: {}, VA Loss: {}"
+                template = "Step {}, Loss: {}, Style Loss: {}, Content Loss: {}, TV Loss: {}"
                 print(
                     template.format(
                         step,
                         train_loss.result(),
                         train_style_loss.result(),
                         train_content_loss.result(),
-                        train_va_loss.result(),
+                        train_tv_loss.result(),
                     )
                 )
                 save_path = manager.save()
-                print("Saved checkpoint for step {}: {}".format(int(ckpt.step), save_path))
+                print(
+                    "Saved checkpoint for step {}: {}".format(
+                        int(ckpt.step), save_path
+                    )
+                )
 
             train_loss.reset_states()
             train_style_loss.reset_states()
             train_content_loss.reset_states()
-            train_va_loss.reset_states()
+            train_tv_loss.reset_states()
