@@ -6,17 +6,17 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 
 from networks import StyleContentModel, TransformerNet
-from utils import load_img
+from utils import load_img, gram_matrix
 
 logging.basicConfig(level=logging.INFO)
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
 
-def style_loss(gram_style_transformed):
+def style_loss(gram_style, style_features_transformed):
     style_loss = tf.add_n(
         [
-            tf.reduce_mean((gm_transformed - gm) ** 2)
-            for gm_transformed, gm in zip(gram_style_transformed, gram_style)
+            tf.reduce_mean((gram_matrix(sf_transformed) - gm) ** 2)
+            for sf_transformed, gm in zip(style_features_transformed, gram_style)
         ]
     )
     return style_loss
@@ -72,14 +72,12 @@ if __name__ == "__main__":
         "block5_conv1",
     ]
 
-    num_content_layers = len(content_layers)
-    num_style_layers = len(style_layers)
-
     extractor = StyleContentModel(style_layers, content_layers)
     transformer = TransformerNet()
 
     # Precompute gram for style image
-    gram_style, _ = extractor(style_image)
+    style_features, _ = extractor(style_image)
+    gram_style = [gram_matrix(x) for x in style_features]
 
     optimizer = tf.optimizers.Adam(learning_rate=args.learning_rate)
 
@@ -113,14 +111,14 @@ if __name__ == "__main__":
             transformed_image = transformer(image)
 
             _, content_features = extractor(image)
-            transformed_gram_style, content_features_transformed = extractor(
+            style_features_transformed, content_features_transformed = extractor(
                 transformed_image
             )
 
             # va_loss = args.tv_weight * total_variation_loss(transformed_image)
 
             tot_style_loss = args.style_weight * style_loss(
-                transformed_gram_style
+                gram_style, style_features_transformed
             )
             tot_content_loss = args.content_weight * content_loss(
                 content_features, content_features_transformed
