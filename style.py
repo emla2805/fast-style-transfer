@@ -4,7 +4,7 @@ from PIL import Image
 from argparse import ArgumentParser
 
 from networks import TransformerNet
-from train import load_img
+from utils import load_img
 
 if __name__ == "__main__":
     parser = ArgumentParser()

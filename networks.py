@@ -128,8 +128,7 @@ class TransformerNet(keras.Model):
 
         self.relu = ReLU()
 
-    def call(self, inputs, **kwargs):
-        x = (inputs / 127.5) - 1  # Normalize to [-1, 1]
+    def call(self, x, **kwargs):
         x = self.relu(self.in1(self.conv1(x)))
         x = self.relu(self.in2(self.conv2(x)))
         x = self.relu(self.in3(self.conv3(x)))
@@ -141,7 +140,6 @@ class TransformerNet(keras.Model):
         x = self.relu(self.in4(self.deconv1(x)))
         x = self.relu(self.in5(self.deconv2(x)))
         x = self.deconv3(x)
-        x = keras.activations.tanh(x) * 127.5 + 127.5
         return x
 
 
@@ -174,30 +172,17 @@ class StyleContentModel(keras.models.Model):
         self.vgg.trainable = False
 
     def call(self, inputs, **kwargs):
-        inputs = inputs
         preprocessed_input = tf.keras.applications.vgg19.preprocess_input(
             inputs
         )
         outputs = self.vgg(preprocessed_input)
         style_outputs, content_outputs = (
             outputs[: self.num_style_layers],
-            outputs[self.num_style_layers :],
+            outputs[self.num_style_layers:],
         )
 
         style_outputs = [
             gram_matrix(style_output) for style_output in style_outputs
         ]
 
-        content_dict = {
-            content_name: value
-            for content_name, value in zip(
-                self.content_layers, content_outputs
-            )
-        }
-
-        style_dict = {
-            style_name: value
-            for style_name, value in zip(self.style_layers, style_outputs)
-        }
-
-        return {"content": content_dict, "style": style_dict}
+        return style_outputs, content_outputs
