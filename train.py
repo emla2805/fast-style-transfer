@@ -50,7 +50,18 @@ if __name__ == "__main__":
     ckpt = tf.train.Checkpoint(
         step=tf.Variable(1), optimizer=optimizer, transformer=transformer
     )
-    manager = tf.train.CheckpointManager(ckpt, args.log_dir, max_to_keep=3)
+
+    log_dir = os.path.join(
+        args.log_dir,
+        "lr={lr}_sw={sw}_cw={cw}_tw={tw}".format(
+            lr=args.learning_rate,
+            sw=args.style_weight,
+            cw=args.content_weight,
+            tw=args.tv_weight,
+        ),
+    )
+
+    manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=3)
     ckpt.restore(manager.latest_checkpoint)
     if manager.latest_checkpoint:
         print("Restored from {}".format(manager.latest_checkpoint))
@@ -62,11 +73,9 @@ if __name__ == "__main__":
     train_content_loss = tf.keras.metrics.Mean(name="train_content_loss")
     train_tv_loss = tf.keras.metrics.Mean(name="train_tv_loss")
 
-    train_summary_writer = tf.summary.create_file_writer(
-        os.path.join(args.log_dir, "train")
-    )
+    summary_writer = tf.summary.create_file_writer(log_dir)
 
-    with train_summary_writer.as_default():
+    with summary_writer.as_default():
         tf.summary.image("Content Image", test_content_image / 255.0, step=0)
         tf.summary.image("Style Image", style_image / 255.0, step=0)
 
@@ -124,7 +133,7 @@ if __name__ == "__main__":
             step = int(ckpt.step)
 
             if step % 500 == 0:
-                with train_summary_writer.as_default():
+                with summary_writer.as_default():
                     tf.summary.scalar("loss", train_loss.result(), step=step)
                     tf.summary.scalar(
                         "style_loss", train_style_loss.result(), step=step
@@ -142,6 +151,14 @@ if __name__ == "__main__":
                     tf.summary.image(
                         "Styled Image", test_styled_image / 255.0, step=step
                     )
+
+                    # Log weight histograms for debugging
+                    for layer in transformer.layers:
+                        for weight in layer.weights:
+                            weight_name = weight.name.replace(":", "_")
+                            tf.summary.histogram(
+                                weight_name, weight, step=step
+                            )
 
                 template = "Step {}, Loss: {}, Style Loss: {}, Content Loss: {}, TV Loss: {}"
                 print(
