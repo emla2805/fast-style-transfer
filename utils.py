@@ -14,3 +14,39 @@ def gram_matrix(input_tensor):
     input_shape = tf.shape(input_tensor)
     num_locations = tf.cast(input_shape[1] * input_shape[2], tf.float32)
     return result / (num_locations)
+
+
+def style_loss(gram_style, style_features_transformed):
+    style_loss = tf.add_n(
+        [
+            tf.reduce_mean((gram_matrix(sf_transformed) - gm) ** 2)
+            for sf_transformed, gm in zip(
+                style_features_transformed, gram_style
+            )
+        ]
+    )
+    return style_loss
+
+
+def content_loss(content_features, content_features_transformed):
+    content_loss = tf.add_n(
+        [
+            tf.reduce_mean((cf_transformed - cf) ** 2)
+            for cf_transformed, cf in zip(
+                content_features_transformed, content_features
+            )
+        ]
+    )
+    return content_loss
+
+
+def high_pass_x_y(image):
+    x_var = image[:, :, 1:, :] - image[:, :, :-1, :]
+    y_var = image[:, 1:, :, :] - image[:, :-1, :, :]
+
+    return x_var, y_var
+
+
+def total_variation_loss(image):
+    x_deltas, y_deltas = high_pass_x_y(image)
+    return tf.reduce_mean(x_deltas ** 2) + tf.reduce_mean(y_deltas ** 2)
