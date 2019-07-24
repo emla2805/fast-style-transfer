@@ -16,7 +16,9 @@ def style_loss(gram_style, style_features_transformed):
     style_loss = tf.add_n(
         [
             tf.reduce_mean((gram_matrix(sf_transformed) - gm) ** 2)
-            for sf_transformed, gm in zip(style_features_transformed, gram_style)
+            for sf_transformed, gm in zip(
+                style_features_transformed, gram_style
+            )
         ]
     )
     return style_loss
