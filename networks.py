@@ -13,10 +13,15 @@ class ReflectionPadding2D(keras.layers.Layer):
         return s[0], s[1] + 2 * self.padding, s[2] + 2 * self.padding, s[3]
 
     def call(self, x, **kwargs):
-        w_pad = self.padding
-        h_pad = self.padding
         return tf.pad(
-            x, [[0, 0], [h_pad, h_pad], [w_pad, w_pad], [0, 0]], "REFLECT"
+            x,
+            [
+                [0, 0],
+                [self.padding, self.padding],
+                [self.padding, self.padding],
+                [0, 0],
+            ],
+            "REFLECT",
         )
 
 
@@ -80,10 +85,6 @@ class UpsampleConvLayer(keras.layers.Layer):
 class ResidualBlock(keras.Model):
     def __init__(self, channels, strides=1):
         super(ResidualBlock, self).__init__()
-
-        self.channels = channels
-        self.strides = strides
-
         self.conv1 = ConvLayer(channels, kernel_size=3, strides=strides)
         self.in1 = InstanceNormalization()
         self.conv2 = ConvLayer(channels, kernel_size=3, strides=strides)
@@ -128,8 +129,7 @@ class TransformerNet(keras.Model):
 
         self.relu = ReLU()
 
-    def call(self, inputs, **kwargs):
-        x = (inputs / 127.5) - 1  # Normalize to [-1, 1]
+    def call(self, x, **kwargs):
         x = self.relu(self.in1(self.conv1(x)))
         x = self.relu(self.in2(self.conv2(x)))
         x = self.relu(self.in3(self.conv3(x)))
@@ -141,63 +141,30 @@ class TransformerNet(keras.Model):
         x = self.relu(self.in4(self.deconv1(x)))
         x = self.relu(self.in5(self.deconv2(x)))
         x = self.deconv3(x)
-        x = keras.activations.tanh(x) * 127.5 + 127.5
         return x
-
-
-def vgg_layers(layer_names):
-    """ Creates a vgg model that returns a list of intermediate output values."""
-    # Load our model. Load pretrained VGG, trained on imagenet data
-    vgg = tf.keras.applications.VGG19(include_top=False, weights="imagenet")
-    vgg.trainable = False
-
-    outputs = [vgg.get_layer(name).output for name in layer_names]
-
-    model = tf.keras.Model([vgg.input], outputs)
-    return model
-
-
-def gram_matrix(input_tensor):
-    result = tf.linalg.einsum("bijc,bijd->bcd", input_tensor, input_tensor)
-    input_shape = tf.shape(input_tensor)
-    num_locations = tf.cast(input_shape[1] * input_shape[2], tf.float32)
-    return result / (num_locations)
 
 
 class StyleContentModel(keras.models.Model):
     def __init__(self, style_layers, content_layers):
         super(StyleContentModel, self).__init__()
-        self.vgg = vgg_layers(style_layers + content_layers)
-        self.style_layers = style_layers
-        self.content_layers = content_layers
-        self.num_style_layers = len(style_layers)
+        vgg = tf.keras.applications.VGG16(
+            include_top=False, weights="imagenet"
+        )
+        vgg.trainable = False
+
+        style_outputs = [vgg.get_layer(name).output for name in style_layers]
+        content_outputs = [
+            vgg.get_layer(name).output for name in content_layers
+        ]
+
+        self.vgg = tf.keras.Model(
+            [vgg.input], [style_outputs, content_outputs]
+        )
         self.vgg.trainable = False
 
     def call(self, inputs, **kwargs):
-        inputs = inputs
-        preprocessed_input = tf.keras.applications.vgg19.preprocess_input(
+        preprocessed_input = tf.keras.applications.vgg16.preprocess_input(
             inputs
         )
-        outputs = self.vgg(preprocessed_input)
-        style_outputs, content_outputs = (
-            outputs[: self.num_style_layers],
-            outputs[self.num_style_layers :],
-        )
-
-        style_outputs = [
-            gram_matrix(style_output) for style_output in style_outputs
-        ]
-
-        content_dict = {
-            content_name: value
-            for content_name, value in zip(
-                self.content_layers, content_outputs
-            )
-        }
-
-        style_dict = {
-            style_name: value
-            for style_name, value in zip(self.style_layers, style_outputs)
-        }
-
-        return {"content": content_dict, "style": style_dict}
+        style_outputs, content_outputs = self.vgg(preprocessed_input)
+        return style_outputs, content_outputs

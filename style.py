@@ -4,11 +4,11 @@ from PIL import Image
 from argparse import ArgumentParser
 
 from networks import TransformerNet
-from train import load_img
+from utils import load_img
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--log-dir", default="logs/style")
+    parser.add_argument("--log-dir")
     parser.add_argument("--image-path")
     parser.add_argument("--output-path")
     args = parser.parse_args()
