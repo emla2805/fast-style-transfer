@@ -38,15 +38,3 @@ def content_loss(content_features, content_features_transformed):
         ]
     )
     return content_loss
-
-
-def high_pass_x_y(image):
-    x_var = image[:, :, 1:, :] - image[:, :, :-1, :]
-    y_var = image[:, 1:, :, :] - image[:, :-1, :, :]
-
-    return x_var, y_var
-
-
-def total_variation_loss(image):
-    x_deltas, y_deltas = high_pass_x_y(image)
-    return tf.reduce_mean(x_deltas ** 2) + tf.reduce_mean(y_deltas ** 2)

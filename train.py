@@ -56,7 +56,6 @@ if __name__ == "__main__":
             bs=args.batch_size,
             sw=args.style_weight,
             cw=args.content_weight,
-            tw=args.tv_weight,
         ),
     )
 
@@ -70,7 +69,6 @@ if __name__ == "__main__":
     train_loss = tf.keras.metrics.Mean(name="train_loss")
     train_style_loss = tf.keras.metrics.Mean(name="train_style_loss")
     train_content_loss = tf.keras.metrics.Mean(name="train_content_loss")
-    train_tv_loss = tf.keras.metrics.Mean(name="train_tv_loss")
 
     summary_writer = tf.summary.create_file_writer(log_dir)
 
@@ -89,8 +87,6 @@ if __name__ == "__main__":
                 transformed_image
             )
 
-            # va_loss = args.tv_weight * total_variation_loss(transformed_image)
-
             tot_style_loss = args.style_weight * style_loss(
                 gram_style, style_features_transformed
             )
@@ -98,7 +94,6 @@ if __name__ == "__main__":
                 content_features, content_features_transformed
             )
 
-            # loss = tot_style_loss + tot_content_loss + va_loss
             loss = tot_style_loss + tot_content_loss
 
         gradients = tape.gradient(loss, transformer.trainable_variables)
@@ -109,7 +104,6 @@ if __name__ == "__main__":
         train_loss(loss)
         train_style_loss(tot_style_loss)
         train_content_loss(tot_content_loss)
-        # train_tv_loss(va_loss)
 
     def _crop(features):
         image = tf.image.resize_with_crop_or_pad(
@@ -140,9 +134,6 @@ if __name__ == "__main__":
                     tf.summary.scalar(
                         "content_loss", train_content_loss.result(), step=step
                     )
-                    tf.summary.scalar(
-                        "tv_loss", train_tv_loss.result(), step=step
-                    )
                     test_styled_image = transformer(test_content_image)
                     test_styled_image = tf.clip_by_value(
                         test_styled_image, 0, 255
@@ -151,22 +142,13 @@ if __name__ == "__main__":
                         "Styled Image", test_styled_image / 255.0, step=step
                     )
 
-                    # Log weight histograms for debugging
-                    for layer in transformer.layers:
-                        for weight in layer.weights:
-                            weight_name = weight.name.replace(":", "_")
-                            tf.summary.histogram(
-                                weight_name, weight, step=step
-                            )
-
-                template = "Step {}, Loss: {}, Style Loss: {}, Content Loss: {}, TV Loss: {}"
+                template = "Step {}, Loss: {}, Style Loss: {}, Content Loss: {}"
                 print(
                     template.format(
                         step,
                         train_loss.result(),
                         train_style_loss.result(),
                         train_content_loss.result(),
-                        train_tv_loss.result(),
                     )
                 )
                 save_path = manager.save()
@@ -179,4 +161,3 @@ if __name__ == "__main__":
         train_loss.reset_states()
         train_style_loss.reset_states()
         train_content_loss.reset_states()
-        train_tv_loss.reset_states()
