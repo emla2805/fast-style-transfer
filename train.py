@@ -77,14 +77,14 @@ if __name__ == "__main__":
         tf.summary.image("Style Image", style_image / 255.0, step=0)
 
     @tf.function()
-    def train_step(image):
+    def train_step(images):
         with tf.GradientTape() as tape:
 
-            transformed_image = transformer(image)
+            transformed_images = transformer(images)
 
-            _, content_features = extractor(image)
+            _, content_features = extractor(images)
             style_features_transformed, content_features_transformed = extractor(
-                transformed_image
+                transformed_images
             )
 
             tot_style_loss = args.style_weight * style_loss(
@@ -113,14 +113,12 @@ if __name__ == "__main__":
         return image
 
     # Warning: Downloads the full coco2014 dataset
-    ds = tfds.load(
-        "coco2014", split=tfds.Split.TRAIN, data_dir="~/tensorflow_datasets"
-    )
+    ds = tfds.load("coco2014", split=tfds.Split.TRAIN)
     ds = ds.map(_crop).batch(args.batch_size).prefetch(AUTOTUNE)
 
     for _ in range(args.epochs):
-        for image in ds:
-            train_step(image)
+        for images in ds:
+            train_step(images)
 
             ckpt.step.assign_add(1)
             step = int(ckpt.step)
