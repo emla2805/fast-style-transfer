@@ -17,11 +17,10 @@ if __name__ == "__main__":
     parser.add_argument("--log-dir", default="logs/style")
     parser.add_argument("--learning-rate", default=1e-3, type=float)
     parser.add_argument("--image-size", default=256, type=int)
-    parser.add_argument("--batch-size", default=4, type=int)
+    parser.add_argument("--batch-size", default=16, type=int)
     parser.add_argument("--epochs", default=2, type=int)
-    parser.add_argument("--content-weight", default=1e4, type=float)
-    parser.add_argument("--style-weight", default=1e-2, type=float)
-    parser.add_argument("--tv-weight", default=1, type=float)
+    parser.add_argument("--content-weight", default=1e1, type=float)
+    parser.add_argument("--style-weight", default=1e1, type=float)
     parser.add_argument("--style-image")
     parser.add_argument("--test-image")
     args = parser.parse_args()
@@ -29,13 +28,12 @@ if __name__ == "__main__":
     style_image = load_img(args.style_image)
     test_content_image = load_img(args.test_image)
 
-    content_layers = ["block4_conv2"]
+    content_layers = ["block2_conv2"]
     style_layers = [
-        "block1_conv1",
-        "block2_conv1",
-        "block3_conv1",
-        "block4_conv1",
-        "block5_conv1",
+        "block1_conv2",
+        "block2_conv2",
+        "block3_conv3",
+        "block4_conv3",
     ]
 
     extractor = StyleContentModel(style_layers, content_layers)
@@ -53,8 +51,9 @@ if __name__ == "__main__":
 
     log_dir = os.path.join(
         args.log_dir,
-        "lr={lr}_sw={sw}_cw={cw}_tw={tw}".format(
+        "lr={lr}_bs={bs}_sw={sw}_cw={cw}".format(
             lr=args.learning_rate,
+            bs=args.batch_size,
             sw=args.style_weight,
             cw=args.content_weight,
             tw=args.tv_weight,
@@ -123,7 +122,7 @@ if __name__ == "__main__":
     ds = tfds.load(
         "coco2014", split=tfds.Split.TRAIN, data_dir="~/tensorflow_datasets"
     )
-    ds = ds.map(_crop).shuffle(1000).batch(args.batch_size).prefetch(AUTOTUNE)
+    ds = ds.map(_crop).batch(args.batch_size).prefetch(AUTOTUNE)
 
     for _ in range(args.epochs):
         for image in ds:

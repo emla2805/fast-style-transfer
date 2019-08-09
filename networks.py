@@ -13,10 +13,15 @@ class ReflectionPadding2D(keras.layers.Layer):
         return s[0], s[1] + 2 * self.padding, s[2] + 2 * self.padding, s[3]
 
     def call(self, x, **kwargs):
-        w_pad = self.padding
-        h_pad = self.padding
         return tf.pad(
-            x, [[0, 0], [h_pad, h_pad], [w_pad, w_pad], [0, 0]], "REFLECT"
+            x,
+            [
+                [0, 0],
+                [self.padding, self.padding],
+                [self.padding, self.padding],
+                [0, 0],
+            ],
+            "REFLECT",
         )
 
 
@@ -80,10 +85,6 @@ class UpsampleConvLayer(keras.layers.Layer):
 class ResidualBlock(keras.Model):
     def __init__(self, channels, strides=1):
         super(ResidualBlock, self).__init__()
-
-        self.channels = channels
-        self.strides = strides
-
         self.conv1 = ConvLayer(channels, kernel_size=3, strides=strides)
         self.in1 = InstanceNormalization()
         self.conv2 = ConvLayer(channels, kernel_size=3, strides=strides)
@@ -146,17 +147,23 @@ class TransformerNet(keras.Model):
 class StyleContentModel(keras.models.Model):
     def __init__(self, style_layers, content_layers):
         super(StyleContentModel, self).__init__()
-        vgg = tf.keras.applications.VGG19(include_top=False, weights="imagenet")
+        vgg = tf.keras.applications.VGG16(
+            include_top=False, weights="imagenet"
+        )
         vgg.trainable = False
 
         style_outputs = [vgg.get_layer(name).output for name in style_layers]
-        content_outputs = [vgg.get_layer(name).output for name in content_layers]
+        content_outputs = [
+            vgg.get_layer(name).output for name in content_layers
+        ]
 
-        self.vgg = tf.keras.Model([vgg.input], [style_outputs, content_outputs])
+        self.vgg = tf.keras.Model(
+            [vgg.input], [style_outputs, content_outputs]
+        )
         self.vgg.trainable = False
 
     def call(self, inputs, **kwargs):
-        preprocessed_input = tf.keras.applications.vgg19.preprocess_input(
+        preprocessed_input = tf.keras.applications.vgg16.preprocess_input(
             inputs
         )
         style_outputs, content_outputs = self.vgg(preprocessed_input)
