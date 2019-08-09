@@ -68,7 +68,7 @@ and navigate to [localhost:6006](localhost:6006).
   <img src="images/style/mosaic.jpg" height="174px">
   <img src="images/output/mosaic-styled.png" height="174px">
   <img src="images/output/wave-styled.png" height="174px">
-  <img src="images/style/wave.jpg" height="174px">
+  <img src="images/style/wave.jpg" height="174px" width="174px">
   <br>
   <img src="images/style/the-scream.jpg" height="174px">
   <img src="images/output/the-scream-styled.png" height="174px">
