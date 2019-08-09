@@ -14,7 +14,7 @@ AUTOTUNE = tf.data.experimental.AUTOTUNE
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--log-dir", default="logs/style")
+    parser.add_argument("--log-dir", default="models/style")
     parser.add_argument("--learning-rate", default=1e-3, type=float)
     parser.add_argument("--image-size", default=256, type=int)
     parser.add_argument("--batch-size", default=16, type=int)
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         ),
     )
 
-    manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=3)
+    manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=1)
     ckpt.restore(manager.latest_checkpoint)
     if manager.latest_checkpoint:
         print("Restored from {}".format(manager.latest_checkpoint))
