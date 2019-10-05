@@ -1,5 +1,4 @@
 import os
-import logging
 from argparse import ArgumentParser
 
 import tensorflow as tf
@@ -8,7 +7,6 @@ import tensorflow_datasets as tfds
 from networks import StyleContentModel, TransformerNet
 from utils import load_img, gram_matrix, style_loss, content_loss
 
-logging.basicConfig(level=logging.INFO)
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
 
@@ -76,7 +74,7 @@ if __name__ == "__main__":
         tf.summary.image("Content Image", test_content_image / 255.0, step=0)
         tf.summary.image("Style Image", style_image / 255.0, step=0)
 
-    @tf.function()
+    @tf.function
     def train_step(images):
         with tf.GradientTape() as tape:
 
@@ -112,11 +110,11 @@ if __name__ == "__main__":
         image = tf.cast(image, tf.float32)
         return image
 
-    # Warning: Downloads the full coco2014 dataset
-    ds = tfds.load("coco2014", split=tfds.Split.TRAIN)
+    # Warning: Downloads the full coco/2014 dataset
+    ds = tfds.load("coco/2014", split="train")
     ds = ds.map(_crop).batch(args.batch_size).prefetch(AUTOTUNE)
 
-    for _ in range(args.epochs):
+    for epoch in range(args.epochs):
         for images in ds:
             train_step(images)
 
@@ -140,9 +138,10 @@ if __name__ == "__main__":
                         "Styled Image", test_styled_image / 255.0, step=step
                     )
 
-                template = "Step {}, Loss: {}, Style Loss: {}, Content Loss: {}"
+                template = "Epoch {}, Step {}, Loss: {}, Style Loss: {}, Content Loss: {}"
                 print(
                     template.format(
+                        epoch + 1,
                         step,
                         train_loss.result(),
                         train_style_loss.result(),
@@ -156,6 +155,6 @@ if __name__ == "__main__":
                     )
                 )
 
-        train_loss.reset_states()
-        train_style_loss.reset_states()
-        train_content_loss.reset_states()
+                train_loss.reset_states()
+                train_style_loss.reset_states()
+                train_content_loss.reset_states()
