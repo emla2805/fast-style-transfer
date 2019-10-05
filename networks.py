@@ -1,10 +1,8 @@
 import tensorflow as tf
-
-from tensorflow import keras
-from tensorflow.python.keras.layers import Conv2D, ReLU, UpSampling2D
+from tensorflow.keras.layers import Conv2D, ReLU, UpSampling2D
 
 
-class ReflectionPadding2D(keras.layers.Layer):
+class ReflectionPadding2D(tf.keras.layers.Layer):
     def __init__(self, padding=1, **kwargs):
         super(ReflectionPadding2D, self).__init__(**kwargs)
         self.padding = padding
@@ -12,7 +10,7 @@ class ReflectionPadding2D(keras.layers.Layer):
     def compute_output_shape(self, s):
         return s[0], s[1] + 2 * self.padding, s[2] + 2 * self.padding, s[3]
 
-    def call(self, x, **kwargs):
+    def call(self, x):
         return tf.pad(
             x,
             [
@@ -25,7 +23,7 @@ class ReflectionPadding2D(keras.layers.Layer):
         )
 
 
-class InstanceNormalization(keras.layers.Layer):
+class InstanceNormalization(tf.keras.layers.Layer):
     """Instance Normalization Layer (https://arxiv.org/abs/1607.08022)."""
 
     def __init__(self, epsilon=1e-5):
@@ -47,27 +45,27 @@ class InstanceNormalization(keras.layers.Layer):
             trainable=True,
         )
 
-    def call(self, x, **kwargs):
+    def call(self, x):
         mean, variance = tf.nn.moments(x, axes=[1, 2], keepdims=True)
         inv = tf.math.rsqrt(variance + self.epsilon)
         normalized = (x - mean) * inv
         return self.scale * normalized + self.offset
 
 
-class ConvLayer(keras.layers.Layer):
+class ConvLayer(tf.keras.layers.Layer):
     def __init__(self, channels, kernel_size=3, strides=1):
         super(ConvLayer, self).__init__()
         reflection_padding = kernel_size // 2
         self.reflection_pad = ReflectionPadding2D(reflection_padding)
         self.conv2d = Conv2D(channels, kernel_size, strides=strides)
 
-    def call(self, x, **kwargs):
+    def call(self, x):
         x = self.reflection_pad(x)
         x = self.conv2d(x)
         return x
 
 
-class UpsampleConvLayer(keras.layers.Layer):
+class UpsampleConvLayer(tf.keras.layers.Layer):
     def __init__(self, channels, kernel_size=3, strides=1, upsample=2):
         super(UpsampleConvLayer, self).__init__()
         reflection_padding = kernel_size // 2
@@ -75,14 +73,14 @@ class UpsampleConvLayer(keras.layers.Layer):
         self.conv2d = Conv2D(channels, kernel_size, strides=strides)
         self.up2d = UpSampling2D(size=upsample)
 
-    def call(self, x, **kwargs):
+    def call(self, x):
         x = self.up2d(x)
         x = self.reflection_pad(x)
         x = self.conv2d(x)
         return x
 
 
-class ResidualBlock(keras.Model):
+class ResidualBlock(tf.keras.Model):
     def __init__(self, channels, strides=1):
         super(ResidualBlock, self).__init__()
         self.conv1 = ConvLayer(channels, kernel_size=3, strides=strides)
@@ -90,7 +88,7 @@ class ResidualBlock(keras.Model):
         self.conv2 = ConvLayer(channels, kernel_size=3, strides=strides)
         self.in2 = InstanceNormalization()
 
-    def call(self, inputs, training=None, **kwargs):
+    def call(self, inputs):
         residual = inputs
 
         x = self.in1(self.conv1(inputs))
@@ -101,7 +99,7 @@ class ResidualBlock(keras.Model):
         return x
 
 
-class TransformerNet(keras.Model):
+class TransformerNet(tf.keras.Model):
     def __init__(self):
         super(TransformerNet, self).__init__()
         self.conv1 = ConvLayer(32, kernel_size=9, strides=1)
@@ -129,7 +127,7 @@ class TransformerNet(keras.Model):
 
         self.relu = ReLU()
 
-    def call(self, x, **kwargs):
+    def call(self, x):
         x = self.relu(self.in1(self.conv1(x)))
         x = self.relu(self.in2(self.conv2(x)))
         x = self.relu(self.in3(self.conv3(x)))
@@ -144,7 +142,7 @@ class TransformerNet(keras.Model):
         return x
 
 
-class StyleContentModel(keras.models.Model):
+class StyleContentModel(tf.keras.models.Model):
     def __init__(self, style_layers, content_layers):
         super(StyleContentModel, self).__init__()
         vgg = tf.keras.applications.VGG16(
@@ -162,7 +160,7 @@ class StyleContentModel(keras.models.Model):
         )
         self.vgg.trainable = False
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs):
         preprocessed_input = tf.keras.applications.vgg16.preprocess_input(
             inputs
         )
