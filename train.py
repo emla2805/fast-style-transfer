@@ -101,16 +101,19 @@ if __name__ == "__main__":
         train_style_loss(tot_style_loss)
         train_content_loss(tot_content_loss)
 
-    def _crop(features):
-        image = tf.image.resize_with_crop_or_pad(
-            features["image"], args.image_size, args.image_size
-        )
+    def pre_process(features):
+        image = features["image"]
+        image = tf.image.resize(image, size=(args.image_size, args.image_size))
         image = tf.cast(image, tf.float32)
         return image
 
     # Warning: Downloads the full coco/2014 dataset
-    ds = tfds.load("coco/2014", split="train")
-    ds = ds.map(_crop).batch(args.batch_size).prefetch(AUTOTUNE)
+    ds = (
+        tfds.load("coco/2014", split="train")
+        .map(pre_process, num_parallel_calls=AUTOTUNE)
+        .batch(args.batch_size)
+        .prefetch(AUTOTUNE)
+    )
 
     for epoch in range(args.epochs):
         for images in ds:
