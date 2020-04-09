@@ -19,8 +19,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", default=2, type=int)
     parser.add_argument("--content-weight", default=1e1, type=float)
     parser.add_argument("--style-weight", default=1e1, type=float)
-    parser.add_argument("--style-image")
-    parser.add_argument("--test-image")
+    parser.add_argument("--style-image", required=True)
+    parser.add_argument("--test-image", required=True)
     args = parser.parse_args()
 
     style_image = load_img(args.style_image)
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     extractor = StyleContentModel(style_layers, content_layers)
     transformer = TransformerNet()
 
-    # Precompute gram for style image
+    # Pre-compute gram for style image
     style_features, _ = extractor(style_image)
     gram_style = [gram_matrix(x) for x in style_features]
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=1)
     ckpt.restore(manager.latest_checkpoint)
     if manager.latest_checkpoint:
-        print("Restored from {}".format(manager.latest_checkpoint))
+        print(f"Restored from {manager.latest_checkpoint}")
     else:
         print("Initializing from scratch.")
 
@@ -77,7 +77,6 @@ if __name__ == "__main__":
     @tf.function
     def train_step(images):
         with tf.GradientTape() as tape:
-
             transformed_images = transformer(images)
 
             _, content_features = extractor(images)
@@ -91,7 +90,6 @@ if __name__ == "__main__":
             tot_content_loss = args.content_weight * content_loss(
                 content_features, content_features_transformed
             )
-
             loss = tot_style_loss + tot_content_loss
 
         gradients = tape.gradient(loss, transformer.trainable_variables)
@@ -131,29 +129,17 @@ if __name__ == "__main__":
                         "content_loss", train_content_loss.result(), step=step
                     )
                     test_styled_image = transformer(test_content_image)
-                    test_styled_image = tf.clip_by_value(
-                        test_styled_image, 0, 255
-                    )
                     tf.summary.image(
                         "Styled Image", test_styled_image / 255.0, step=step
                     )
 
-                template = "Epoch {}, Step {}, Loss: {}, Style Loss: {}, Content Loss: {}"
                 print(
-                    template.format(
-                        epoch + 1,
-                        step,
-                        train_loss.result(),
-                        train_style_loss.result(),
-                        train_content_loss.result(),
-                    )
+                    f"Epoch {epoch + 1}, Step {step}, "
+                    f"Loss: {train_loss.result()}, "
+                    f"Style Loss: {train_style_loss.result()}, "
+                    f"Content Loss: {train_content_loss.result()}"
                 )
-                save_path = manager.save()
-                print(
-                    "Saved checkpoint for step {}: {}".format(
-                        int(ckpt.step), save_path
-                    )
-                )
+                print(f"Saved checkpoint: {manager.save()}")
 
                 train_loss.reset_states()
                 train_style_loss.reset_states()

@@ -1,6 +1,6 @@
 # Fast Style Transfer
 
-Tensorflow 2.0 implementation of Fast Style Transfer which merges the style of one picture with the content of another.
+Tensorflow 2 implementation of Fast Style Transfer which merges the style of one picture with the content of another.
 
 The algorithm is based on [Perceptual Losses for Real-Time Style Transfer and Super-Resolution](https://arxiv.org/abs/1603.08155) 
 with the addition of [Instance Normalization](https://arxiv.org/pdf/1607.08022.pdf).
@@ -34,18 +34,18 @@ To style an image using a pre-trained model specify the input and output image p
 
 ```bash
 python style.py \
-    --image-path path/to/content/image.jpg \
-    --log-dir log/dir/ \
-    --output-path path/to/output/image.png
+    --image-path images/content/amber.jpg \
+    --log-dir models/mosaic/lr=0.001_bs=16_sw=10.0_cw=10.0/ \
+    --output-path images/output/output-image.png
 ```
 
 ### Train model
 
 ```bash
 python train.py \
-    --log-dir log/dir/ \
-    --style-image path/to/style/image.jpg \
-    --test-image path/to/test/image.jpg
+    --log-dir models/mosaic/ \
+    --style-image images/style/mosaic.jpg \
+    --test-image images/content/amber.jpg
 ```
 
 Training, which uses the COCO 2014 train dataset, takes about 1-2 hours on a Tesla P100 GPU.
@@ -53,7 +53,7 @@ Training, which uses the COCO 2014 train dataset, takes about 1-2 hours on a Tes
 To track metrics, start `Tensorboard`
 
 ```bash
-tensorboard --logdir log/dir/
+tensorboard --logdir models/
 ```
 
 and navigate to [localhost:6006](localhost:6006).
