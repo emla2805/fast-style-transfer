@@ -1,8 +1,11 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, ReLU, UpSampling2D
-from tensorflow.keras.applications import vgg16, VGG16
+from keras.applications import vgg16
+from keras.applications.vgg16 import VGG16
+from tensorflow.python.keras.layers import Conv2D, ReLU, UpSampling2D
 
 from tensorflow_addons.layers import InstanceNormalization
+
+import utils
 
 
 class ReflectionPadding2D(tf.keras.layers.Layer):
@@ -73,6 +76,51 @@ class ResidualBlock(tf.keras.Model):
         return x
 
 
+class FastStyleTransfer(tf.keras.Model):
+    def __init__(self, model, loss_net, style_image, style_weight, content_weight, **kwargs):
+        super().__init__(**kwargs)
+        self.model = model
+        self.loss_net = loss_net
+        self.style_weight = style_weight
+        self.content_weight = content_weight
+
+        # Pre-compute gram for style image
+        style_features, _ = self.loss_net(style_image)
+        self.gram_style = [utils.gram_matrix2(x) for x in style_features]
+
+    def compile(self, optimizer):
+        super().compile()
+        self.optimizer = optimizer
+        self.style_loss_tracker = tf.keras.metrics.Mean(name="style_loss")
+        self.content_loss_tracker = tf.keras.metrics.Mean(name="content_loss")
+        self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
+
+    def train_step(self, images):
+        with tf.GradientTape() as tape:
+            transformed_images = self.model(images)
+
+            _, content_features = self.loss_net(images)
+            style_features_transformed, content_features_transformed = self.loss_net(transformed_images)
+
+            style_loss = self.style_weight * utils.style_loss(self.gram_style, style_features_transformed)
+            content_loss = self.content_weight * utils.content_loss(content_features, content_features_transformed)
+            total_loss = style_loss + content_loss
+
+        trainable_vars = self.model.trainable_variables
+        gradients = tape.gradient(total_loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        # Update the trackers.
+        self.style_loss_tracker.update_state(style_loss)
+        self.content_loss_tracker.update_state(content_loss)
+        self.total_loss_tracker.update_state(total_loss)
+        return {
+            "style_loss": self.style_loss_tracker.result(),
+            "content_loss": self.content_loss_tracker.result(),
+            "total_loss": self.total_loss_tracker.result(),
+        }
+
+
 class TransformerNet(tf.keras.Model):
     def __init__(self):
         super(TransformerNet, self).__init__()
@@ -89,13 +137,9 @@ class TransformerNet(tf.keras.Model):
         self.res4 = ResidualBlock(128)
         self.res5 = ResidualBlock(128)
 
-        self.deconv1 = UpsampleConvLayer(
-            64, kernel_size=3, strides=1, upsample=2
-        )
+        self.deconv1 = UpsampleConvLayer(64, kernel_size=3, strides=1, upsample=2)
         self.in4 = InstanceNormalization()
-        self.deconv2 = UpsampleConvLayer(
-            32, kernel_size=3, strides=1, upsample=2
-        )
+        self.deconv2 = UpsampleConvLayer(32, kernel_size=3, strides=1, upsample=2)
         self.in5 = InstanceNormalization()
         self.deconv3 = ConvLayer(3, kernel_size=9, strides=1)
 
@@ -117,19 +161,25 @@ class TransformerNet(tf.keras.Model):
 
 
 class StyleContentModel(tf.keras.models.Model):
-    def __init__(self, style_layers, content_layers):
+    def __init__(self, style_layers=None, content_layers=None):
         super(StyleContentModel, self).__init__()
+        if style_layers is None:
+            style_layers = [
+                "block1_conv2",
+                "block2_conv2",
+                "block3_conv3",
+                "block4_conv3",
+            ]
+        if content_layers is None:
+            content_layers = ["block2_conv2"]
+
         vgg = VGG16(include_top=False, weights="imagenet")
         vgg.trainable = False
 
         style_outputs = [vgg.get_layer(name).output for name in style_layers]
-        content_outputs = [
-            vgg.get_layer(name).output for name in content_layers
-        ]
+        content_outputs = [vgg.get_layer(name).output for name in content_layers]
 
-        self.vgg = tf.keras.Model(
-            [vgg.input], [style_outputs, content_outputs]
-        )
+        self.vgg = tf.keras.Model([vgg.input], [style_outputs, content_outputs])
         self.vgg.trainable = False
 
     def call(self, inputs):

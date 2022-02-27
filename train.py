@@ -4,10 +4,10 @@ from argparse import ArgumentParser
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-from networks import StyleContentModel, TransformerNet
-from utils import load_img, gram_matrix, style_loss, content_loss
+import utils
+from networks import StyleContentModel, TransformerNet, FastStyleTransfer
 
-AUTOTUNE = tf.data.experimental.AUTOTUNE
+AUTOTUNE = tf.data.AUTOTUNE
 
 
 if __name__ == "__main__":
@@ -15,37 +15,26 @@ if __name__ == "__main__":
     parser.add_argument("--log-dir", default="models/style")
     parser.add_argument("--learning-rate", default=1e-3, type=float)
     parser.add_argument("--image-size", default=256, type=int)
-    parser.add_argument("--batch-size", default=16, type=int)
+    parser.add_argument("--batch-size", default=4, type=int)
     parser.add_argument("--epochs", default=2, type=int)
     parser.add_argument("--content-weight", default=1e1, type=float)
     parser.add_argument("--style-weight", default=1e1, type=float)
     parser.add_argument("--style-image", required=True)
     parser.add_argument("--test-image", required=True)
+    parser.add_argument("--log-freq", default=500, type=int)
     args = parser.parse_args()
 
-    style_image = load_img(args.style_image)
-    test_content_image = load_img(args.test_image)
+    style_image = utils.load_img(args.style_image)
+    test_content_image = utils.load_img(args.test_image)
 
-    content_layers = ["block2_conv2"]
-    style_layers = [
-        "block1_conv2",
-        "block2_conv2",
-        "block3_conv3",
-        "block4_conv3",
-    ]
+    mirrored_strategy = tf.distribute.MirroredStrategy()
 
-    extractor = StyleContentModel(style_layers, content_layers)
-    transformer = TransformerNet()
-
-    # Pre-compute gram for style image
-    style_features, _ = extractor(style_image)
-    gram_style = [gram_matrix(x) for x in style_features]
-
-    optimizer = tf.optimizers.Adam(learning_rate=args.learning_rate)
-
-    ckpt = tf.train.Checkpoint(
-        step=tf.Variable(1), optimizer=optimizer, transformer=transformer
-    )
+    with mirrored_strategy.scope():
+        extractor = StyleContentModel()
+        transformer = TransformerNet()
+        model = FastStyleTransfer(transformer, extractor, style_image, args.style_weight, args.content_weight)
+        optimizer = tf.optimizers.Adam(learning_rate=args.learning_rate)
+    model.compile(optimizer=optimizer)
 
     log_dir = os.path.join(
         args.log_dir,
@@ -56,50 +45,6 @@ if __name__ == "__main__":
             cw=args.content_weight,
         ),
     )
-
-    manager = tf.train.CheckpointManager(ckpt, log_dir, max_to_keep=1)
-    ckpt.restore(manager.latest_checkpoint)
-    if manager.latest_checkpoint:
-        print(f"Restored from {manager.latest_checkpoint}")
-    else:
-        print("Initializing from scratch.")
-
-    train_loss = tf.keras.metrics.Mean(name="train_loss")
-    train_style_loss = tf.keras.metrics.Mean(name="train_style_loss")
-    train_content_loss = tf.keras.metrics.Mean(name="train_content_loss")
-
-    summary_writer = tf.summary.create_file_writer(log_dir)
-
-    with summary_writer.as_default():
-        tf.summary.image("Content Image", test_content_image / 255.0, step=0)
-        tf.summary.image("Style Image", style_image / 255.0, step=0)
-
-    @tf.function
-    def train_step(images):
-        with tf.GradientTape() as tape:
-            transformed_images = transformer(images)
-
-            _, content_features = extractor(images)
-            style_features_transformed, content_features_transformed = extractor(
-                transformed_images
-            )
-
-            tot_style_loss = args.style_weight * style_loss(
-                gram_style, style_features_transformed
-            )
-            tot_content_loss = args.content_weight * content_loss(
-                content_features, content_features_transformed
-            )
-            loss = tot_style_loss + tot_content_loss
-
-        gradients = tape.gradient(loss, transformer.trainable_variables)
-        optimizer.apply_gradients(
-            zip(gradients, transformer.trainable_variables)
-        )
-
-        train_loss(loss)
-        train_style_loss(tot_style_loss)
-        train_content_loss(tot_content_loss)
 
     def pre_process(features):
         image = features["image"]
@@ -115,35 +60,17 @@ if __name__ == "__main__":
         .prefetch(AUTOTUNE)
     )
 
-    for epoch in range(args.epochs):
-        for images in ds:
-            train_step(images)
-
-            ckpt.step.assign_add(1)
-            step = int(ckpt.step)
-
-            if step % 500 == 0:
-                with summary_writer.as_default():
-                    tf.summary.scalar("loss", train_loss.result(), step=step)
-                    tf.summary.scalar(
-                        "style_loss", train_style_loss.result(), step=step
-                    )
-                    tf.summary.scalar(
-                        "content_loss", train_content_loss.result(), step=step
-                    )
-                    test_styled_image = transformer(test_content_image)
-                    tf.summary.image(
-                        "Styled Image", test_styled_image / 255.0, step=step
-                    )
-
-                print(
-                    f"Epoch {epoch + 1}, Step {step}, "
-                    f"Loss: {train_loss.result()}, "
-                    f"Style Loss: {train_style_loss.result()}, "
-                    f"Content Loss: {train_content_loss.result()}"
-                )
-                print(f"Saved checkpoint: {manager.save()}")
-
-                train_loss.reset_states()
-                train_style_loss.reset_states()
-                train_content_loss.reset_states()
+    model.fit(
+        ds,
+        epochs=args.epochs,
+        callbacks=[
+            tf.keras.callbacks.TensorBoard(log_dir=log_dir, profile_batch=0),
+            utils.TransferMonitor(
+                log_dir=log_dir,
+                update_freq=args.log_freq,
+                content_images=test_content_image,
+                style_images=style_image,
+            ),
+            tf.keras.callbacks.TerminateOnNaN(),
+        ],
+    )
