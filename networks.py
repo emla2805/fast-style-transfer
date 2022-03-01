@@ -86,7 +86,7 @@ class FastStyleTransfer(tf.keras.Model):
 
         # Pre-compute gram for style image
         style_features, _ = self.loss_net(style_image)
-        self.gram_style = [utils.gram_matrix2(x) for x in style_features]
+        self.gram_style = [utils.gram_matrix(x) for x in style_features]
 
     def compile(self, optimizer):
         super().compile()
@@ -119,6 +119,14 @@ class FastStyleTransfer(tf.keras.Model):
             "content_loss": self.content_loss_tracker.result(),
             "total_loss": self.total_loss_tracker.result(),
         }
+
+    @property
+    def metrics(self):
+        return [
+            self.style_loss_tracker,
+            self.content_loss_tracker,
+            self.total_loss_tracker,
+        ]
 
 
 class TransformerNet(tf.keras.Model):

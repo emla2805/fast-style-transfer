@@ -64,7 +64,7 @@ if __name__ == "__main__":
         ds,
         epochs=args.epochs,
         callbacks=[
-            tf.keras.callbacks.TensorBoard(log_dir=log_dir, profile_batch=0),
+            tf.keras.callbacks.TensorBoard(log_dir=log_dir, update_freq=args.log_freq, profile_batch=0),
             utils.TransferMonitor(
                 log_dir=log_dir,
                 update_freq=args.log_freq,
