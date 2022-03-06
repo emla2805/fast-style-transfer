@@ -61,10 +61,14 @@ if __name__ == "__main__":
     )
 
     model.fit(
-        ds,
-        epochs=args.epochs,
+        ds.repeat(args.epochs),
+        epochs=int(args.epochs * len(ds) / args.log_freq),
+        steps_per_epoch=args.log_freq,
         callbacks=[
             tf.keras.callbacks.TensorBoard(log_dir=log_dir, update_freq=args.log_freq, profile_batch=0),
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=os.path.join(log_dir, "ckpt")
+            ),
             utils.TransferMonitor(
                 log_dir=log_dir,
                 update_freq=args.log_freq,

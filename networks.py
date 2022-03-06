@@ -95,9 +95,12 @@ class FastStyleTransfer(tf.keras.Model):
         self.content_loss_tracker = tf.keras.metrics.Mean(name="content_loss")
         self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
 
+    def call(self, images):
+        return self.model(images)
+
     def train_step(self, images):
         with tf.GradientTape() as tape:
-            transformed_images = self.model(images)
+            transformed_images = self(images)
 
             _, content_features = self.loss_net(images)
             style_features_transformed, content_features_transformed = self.loss_net(transformed_images)
